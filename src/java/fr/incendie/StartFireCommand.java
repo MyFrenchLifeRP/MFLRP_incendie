@@ -1,14 +1,11 @@
 package fr.incendie;
 
-import com.sk89q.worldedit.bukkit.WorldEditPlugin;
-import com.sk89q.worldedit.regions.Region;
-import com.sk89q.worldedit.LocalSession;
-import com.sk89q.worldedit.bukkit.BukkitWorld;
+import org.bukkit.ChatColor;
+import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
-import org.bukkit.Location;
 
 public class StartFireCommand implements CommandExecutor {
 
@@ -32,41 +29,44 @@ public class StartFireCommand implements CommandExecutor {
             return true;
         }
 
-        // Obtenir la sélection WorldEdit
-        WorldEditPlugin we = (WorldEditPlugin) plugin.getServer().getPluginManager().getPlugin("WorldEdit");
-        if (we == null) {
-            player.sendMessage("WorldEdit n'est pas installé.");
+        // parse arguments: <name> <minHeight> <maxHeight> <maxRadius>
+        if (args.length < 4) {
+            player.sendMessage(ChatColor.RED + "Usage: /" + label + " <nom> <hauteurMin> <hauteurMax> <tailleMax>");
             return true;
         }
 
+        String name = args[0];
+        int minH, maxH, maxR;
         try {
-            LocalSession session = we.getSession(player);
-            Region region = session.getSelection(new BukkitWorld(player.getWorld()));
-
-            if (region == null) {
-                player.sendMessage("Veuillez sélectionner une zone avec WorldEdit.");
-                return true;
-            }
-
-            // Calculer le centre de la région
-            double centerX = (region.getMinimumPoint().getX() + region.getMaximumPoint().getX()) / 2.0;
-            double centerY = (region.getMinimumPoint().getY() + region.getMaximumPoint().getY()) / 2.0;
-            double centerZ = (region.getMinimumPoint().getZ() + region.getMaximumPoint().getZ()) / 2.0;
-            Location center = new Location(player.getWorld(), centerX, centerY, centerZ);
-
-            // Créer la zone d'incendie
-            FireZone fireZone = new FireZone(center, 10);
-            plugin.addFireZone(fireZone);
-
-            // Alerte
-            plugin.getServer().broadcastMessage("§cAlerte incendie ! Coordonnées : " + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ());
-
-            player.sendMessage("Incendie démarré dans la zone sélectionnée.");
-
-        } catch (Exception e) {
-            player.sendMessage("Erreur lors de la récupération de la sélection WorldEdit.");
-            e.printStackTrace();
+            minH = Integer.parseInt(args[1]);
+            maxH = Integer.parseInt(args[2]);
+            maxR = Integer.parseInt(args[3]);
+        } catch (NumberFormatException nfe) {
+            player.sendMessage(ChatColor.RED + "Les hauteurs et la taille doivent être des nombres entiers.");
+            return true;
         }
+
+        if (minH > maxH) {
+            player.sendMessage(ChatColor.RED + "La hauteur minimale doit être inférieure ou égale à la hauteur maximale.");
+            return true;
+        }
+
+        if (maxR < 3) {
+            player.sendMessage(ChatColor.RED + "La taille maximale doit être au moins 3.");
+            return true;
+        }
+
+        Location center = player.getLocation();
+
+        // Créer la zone d'incendie
+        FireZone fireZone = new FireZone(name, center, minH, maxH, maxR);
+        plugin.addFireZone(fireZone);
+
+        // Alerte globale
+        plugin.getServer().broadcastMessage(ChatColor.RED + "Alerte incendie ! Zone '" + name + "' au centre "
+                + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ());
+
+        player.sendMessage(ChatColor.GREEN + "Incendie démarré, zone '" + name + "' (taille max " + maxR + ").");
 
         return true;
     }

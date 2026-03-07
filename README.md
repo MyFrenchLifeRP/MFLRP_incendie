@@ -2,19 +2,19 @@
 
 Plugin Minecraft 1.12.2 pour serveur MFLRP - Simulation d'incendies
 
-Ce plugin permet de simuler des incendies dans Minecraft en utilisant WorldEdit pour définir les zones d'incendie. Les feux se propagent automatiquement dans le temps et ne détruisent pas les blocs du monde.
+Ce plugin permet de simuler des incendies dans Minecraft autour de la position d'un joueur. Les paramètres (hauteur, taille, nom) sont fournis lors de l'exécution de la commande. Les feux se propagent automatiquement dans le temps et ne détruisent pas les blocs du monde.
 
 ## Fonctionnalités
 
-- **Simulation d'incendie** : Crée des feux dans une zone circulaire autour d'un point central
-- **Propagation automatique** : Le rayon du feu augmente avec le temps (10 min → rayon 20, 20 min → rayon 30)
+- **Simulation d'incendie** : Crée des feux dans une zone circulaire autour de la position du joueur qui lance la commande
+- **Paramètres dynamiques** : Le nom de la zone, la hauteur minimale/maximale et la taille maximale sont fournis par le joueur
+- **Propagation automatique** : Le rayon du feu augmente linéairement pendant 30 minutes jusqu'à la taille maximale
 - **Protection des blocs** : Les feux n'endommagent pas les structures existantes
 - **Alertes** : Notification automatique à tous les joueurs lors du démarrage d'un incendie
 - **Maintenance** : Les feux sont entretenus automatiquement toutes les minutes
 
 ## Dépendances
 
-- **WorldEdit** : Nécessaire pour sélectionner les zones d'incendie
 - **Spigot/Bukkit** : Serveur Minecraft compatible
 
 ## Structure du projet
@@ -31,8 +31,7 @@ Plugin_MFLRP/
 │   │           └── FireListener.java
 │   └── resources/
 │       └── plugin.yml
-├── lib/
-│   └── we.jar (WorldEdit)
+├── lib/  (optionnel, ne plus nécessaire pour le plugin)
 ├── pom.xml
 └── README.md
 ```
@@ -40,29 +39,31 @@ Plugin_MFLRP/
 ## Commandes
 
 ### /startfire
-**Description** : Démarre un incendie dans la zone sélectionnée avec WorldEdit
+**Description** : Démarre un incendie autour du joueur avec paramètres personnalisés.
 
 **Utilisation** :
 ```
-/startfire
+/startfire <nom> <hauteurMin> <hauteurMax> <tailleMax>
 ```
 
 **Conditions** :
-- Le joueur doit avoir une sélection active avec WorldEdit (outil de sélection)
-- Le joueur doit avoir la permission `plugin.startfire`
+- Le joueur doit exécuter la commande et avoir la permission `plugin.startfire`
+
+**Paramètres** :
+- `<nom>` : identifiant de la zone d'incendie (affiché dans les alertes)
+- `<hauteurMin>` et `<hauteurMax>` : limites verticales pour l'apparition du feu
+- `<tailleMax>` : rayon final (minimum 3) après 30 minutes de propagation
 
 **Effets** :
-- Crée un incendie au centre de la zone sélectionnée
-- Rayon initial : 10 blocs
-- Alerte tous les joueurs avec les coordonnées de l'incendie
-- Le feu se propage automatiquement :
-  - Après 10 minutes : rayon 20 blocs
-  - Après 20 minutes : rayon 30 blocs
+- Feu initial de rayon 3 autour du joueur
+- Alerte globale avec le nom et les coordonnées de la zone
+- Le rayon augmente progressivement jusqu'à `tailleMax` sur 30 minutes
 
 **Exemple** :
-1. Sélectionnez une zone avec WorldEdit (//wand puis sélection)
-2. Tapez `/startfire`
-3. Un incendie démarre au centre de votre sélection
+```
+/startfire foret 60 80 50
+```
+crée une zone nommée "foret" entre les niveaux 60 et 80, montant jusqu'à 50 blocs de rayon.
 
 ## Permissions
 
@@ -90,19 +91,13 @@ Le fichier JAR compilé se trouvera dans le dossier `target/`.
 
 ## Installation
 
-1. Assurez-vous que WorldEdit est installé sur votre serveur
-2. Compilez le plugin avec Maven
-3. Copiez le fichier JAR généré (`Plugin_MFLRP-1.0-SNAPSHOT.jar`) dans le dossier `plugins/` de votre serveur
-4. Redémarrez ou rechargez le serveur avec `/reload`
+1. Compilez le plugin avec Maven
+2. Copiez le fichier JAR généré (`Plugin_MFLRP-1.0-SNAPSHOT.jar`) dans le dossier `plugins/` de votre serveur
+3. Redémarrez ou rechargez le serveur avec `/reload`
 
 ## Configuration
 
-Le plugin ne nécessite pas de fichier de configuration supplémentaire. Tous les paramètres sont codés en dur :
-
-- Rayon initial : 10 blocs
-- Expansion à 10 min : 20 blocs
-- Expansion à 20 min : 30 blocs
-- Intervalle de maintenance : 60 secondes
+Le plugin ne nécessite pas de fichier de configuration supplémentaire. Les paramètres sont définis via la commande : la zone démarre toujours avec un rayon de 3 et grandit linéairement pendant 30 minutes jusqu'à la `tailleMax` fournie par le joueur. La hauteur minimum/maximum est également fixée lors de l'appel.
 
 ## Développement
 
@@ -110,7 +105,7 @@ Le plugin ne nécessite pas de fichier de configuration supplémentaire. Tous le
 - **API** : Spigot/Bukkit
 - **Java** : 8+
 - **Build Tool** : Maven
-- **Dépendances** : Spigot API 1.12.2, WorldEdit 6.1.9
+- **Dépendances** : Spigot API 1.12.2
 
 ## Notes techniques
 

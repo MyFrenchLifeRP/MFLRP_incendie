@@ -8,8 +8,8 @@ description: Plugin Minecraft pour serveur MFLRP
 # Commandes du plugin
 commands:
   startfire:
-    description: Démarre un incendie dans la zone sélectionnée avec WorldEdit
-    usage: /<command>
+    description: Démarre un incendie autour du joueur avec paramètres
+    usage: /<command> <nom> <hauteurMin> <hauteurMax> <tailleMax>
     permission: plugin.startfire
 
 # Permissions du plugin

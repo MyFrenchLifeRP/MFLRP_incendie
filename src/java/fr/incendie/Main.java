@@ -1,11 +1,11 @@
 package fr.incendie;
 
-import org.bukkit.plugin.java.JavaPlugin;
-import org.bukkit.scheduler.BukkitRunnable;
-
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+
+import org.bukkit.plugin.java.JavaPlugin;
+import org.bukkit.scheduler.BukkitRunnable;
 
 public class Main extends JavaPlugin {
 
@@ -31,21 +31,29 @@ public class Main extends JavaPlugin {
                 while (iterator.hasNext()) {
                     FireZone zone = iterator.next();
                     long elapsed = currentTime - zone.getStartTime();
-                    if (elapsed > 20 * 60 * 1000) { // 20 minutes
-                        if (zone.getRadius() < 30) {
-                            zone.expand(30);
-                        }
-                    } else if (elapsed > 10 * 60 * 1000) { // 10 minutes
-                        if (zone.getRadius() < 20) {
-                            zone.expand(20);
+                    // calculate a linear radius growth from 3 to maxSize over 30 minutes
+                    int targetRadius = 3;
+                    long duration = 30 * 60 * 1000; // 30 minutes in ms
+                    if (elapsed >= duration) {
+                        targetRadius = zone.getMaxSize();
+                    } else {
+                        double fraction = (double) elapsed / (double) duration;
+                        targetRadius = 3 + (int) Math.round((zone.getMaxSize() - 3) * fraction);
+                        if (targetRadius > zone.getMaxSize()) {
+                            targetRadius = zone.getMaxSize();
                         }
                     }
-                    // Replacer le feu toutes les minutes pour maintenir
+
+                    if (targetRadius > zone.getRadius()) {
+                        zone.expand(targetRadius);
+                    }
+
+                    // refresh fire every tick interval to keep it alive
                     zone.extinguish();
-                    zone.placeFire();
+                    zone.placeFire(zone.getRadius());
                 }
             }
-        }.runTaskTimer(this, 0L, 1200L); // Toutes les 60 secondes (1200 ticks)
+        }.runTaskTimer(this, 0L, 1200L); // toutes les 60 secondes
     }
 
     @Override
