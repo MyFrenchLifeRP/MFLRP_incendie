@@ -1,0 +1,19 @@
+name: Plugin_MFLRP
+version: 1.0
+main: fr.incendie.Main
+api-version: 1.12
+author: Incendie
+description: Plugin Minecraft pour serveur MFLRP
+
+# Commandes du plugin
+commands:
+  startfire:
+    description: Démarre un incendie dans la zone sélectionnée avec WorldEdit
+    usage: /<command>
+    permission: plugin.startfire
+
+# Permissions du plugin
+permissions:
+  plugin.startfire:
+    description: Permission pour démarrer un incendie
+    default: op
