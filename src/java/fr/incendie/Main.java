@@ -48,8 +48,7 @@ public class Main extends JavaPlugin {
                         zone.expand(targetRadius);
                     }
 
-                    // refresh fire every tick interval to keep it alive
-                    zone.extinguish();
+                    // refresh fire every tick interval to keep it alive (without extinguishing)
                     zone.placeFire(zone.getRadius());
                 }
             }

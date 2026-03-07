@@ -66,8 +66,14 @@ public class StartFireCommand implements CommandExecutor {
         plugin.getServer().broadcastMessage(ChatColor.RED + "Alerte incendie ! Zone '" + name + "' au centre "
                 + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ());
 
-        player.sendMessage(ChatColor.GREEN + "Incendie démarré, zone '" + name + "' (taille max " + maxR + ").");
+        // feedback to player
+        if (fireZone.getFireCount() == 0) {
+            player.sendMessage(ChatColor.YELLOW + "Aucun feu n'a pu être placé : vérifiez que la plage de hauteurs (min/max) contient le terrain autour de vous.");
+        } else {
+            player.sendMessage(ChatColor.GREEN + "Incendie démarré, zone '" + name + "' (taille max " + maxR + ").");
+        }
 
         return true;
     }
 }
+

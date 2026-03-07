@@ -114,4 +114,11 @@ public class FireZone {
     public int getMaxHeight() {
         return maxHeight;
     }
+
+    /**
+     * Number of current fire blocks tracked in this zone.
+     */
+    public int getFireCount() {
+        return fireBlocks.size();
+    }
 }

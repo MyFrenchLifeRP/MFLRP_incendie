@@ -11,7 +11,7 @@ Ce plugin permet de simuler des incendies dans Minecraft autour de la position d
 - **Propagation automatique** : Le rayon du feu augmente linéairement pendant 30 minutes jusqu'à la taille maximale
 - **Protection des blocs** : Les feux n'endommagent pas les structures existantes
 - **Alertes** : Notification automatique à tous les joueurs lors du démarrage d'un incendie
-- **Maintenance** : Les feux sont entretenus automatiquement toutes les minutes
+- **Maintenance** : Les feux sont entretenus automatiquement toutes les minutes (sans s'éteindre entre-temps)
 
 ## Dépendances
 
@@ -58,6 +58,8 @@ Plugin_MFLRP/
 - Feu initial de rayon 3 autour du joueur
 - Alerte globale avec le nom et les coordonnées de la zone
 - Le rayon augmente progressivement jusqu'à `tailleMax` sur 30 minutes
+
+> ⚠️ Si le plugin ne trouve aucun bloc solide dans la plage de hauteurs spécifiée, aucun feu ne sera posé. Le joueur recevra un message d'avertissement dans ce cas.
 
 **Exemple** :
 ```
@@ -111,5 +113,6 @@ Le plugin ne nécessite pas de fichier de configuration supplémentaire. Les par
 
 - Les feux sont placés sur les blocs solides les plus élevés dans le rayon défini
 - Le système empêche la destruction des blocs par le feu naturel de Minecraft
+- Le feu ne disparaît pas naturellement (extinction bloquée par le plugin, dure indéfiniment)
 - Les incendies sont automatiquement éteints lors de l'arrêt du plugin
-- Le plugin utilise un scheduler pour maintenir et propager les feux
+- Le plugin utilise un scheduler pour maintenir et propager les feux (sans les éteindre entre les cycles)

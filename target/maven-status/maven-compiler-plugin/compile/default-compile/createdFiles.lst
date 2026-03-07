@@ -1,5 +1,3 @@
-fr\incendie\Main.class
-fr\incendie\StartFireCommand.class
 fr\incendie\FireListener.class
 fr\incendie\FireZone.class
 fr\incendie\Main$1.class
