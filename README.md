@@ -83,6 +83,21 @@ crée une zone nommée "foret" entre les niveaux 60 et 80, montant jusqu'à 50 b
 /removefire <nomZone>
 ```
 
+### /extinguishitem
+**Description** : Configure un type d'item (par son ID) qui agira comme outil d'extinction : un clic droit avec cet item éteint instantanément le foyer actif de la zone dans laquelle se trouve le joueur.
+
+**Utilisation** :
+```
+/extinguishitem <materialId>
+```
+
+- `<materialId>` correspond au nom `Material` de Bukkit (ex. `STICK`, `IRON_INGOT`, `BLAZE_ROD`).
+- Le joueur reçoit un message de confirmation.
+- La configuration est globale au plugin et persiste tant que le serveur n'est pas redémarré.
+
+Une fois l'item défini, équipe‑le et fais un clic droit pour éteindre l'incendie autour de toi.
+
+
 ## Permissions
 
 ### plugin.startfire

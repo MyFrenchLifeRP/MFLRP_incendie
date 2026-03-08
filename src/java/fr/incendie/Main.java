@@ -20,6 +20,10 @@ public class Main extends JavaPlugin {
         this.getCommand("startfire").setExecutor(new StartFireCommand(this));
         this.getCommand("listfires").setExecutor(new ListFireCommand(this));
         this.getCommand("removefire").setExecutor(new RemoveFireCommand(this));
+        this.getCommand("extinguishitem").setExecutor(new ExtinguishItemCommand(this));
+
+        // interaction listener for extinguisher tool
+        getServer().getPluginManager().registerEvents(new FireInteractListener(this), this);
 
         // Enregistrement des events
         getServer().getPluginManager().registerEvents(new FireListener(), this);
@@ -91,5 +95,16 @@ public class Main extends JavaPlugin {
             }
         }
         return false;
+    }
+
+    // material used as extinguisher tool
+    private org.bukkit.Material extinguisherMaterial;
+
+    public void setExtinguisherMaterial(org.bukkit.Material mat) {
+        this.extinguisherMaterial = mat;
+    }
+
+    public org.bukkit.Material getExtinguisherMaterial() {
+        return extinguisherMaterial;
     }
 }

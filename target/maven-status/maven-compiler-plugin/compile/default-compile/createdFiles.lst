@@ -4,4 +4,5 @@ fr\incendie\FireZone.class
 fr\incendie\ListFireCommand.class
 fr\incendie\Main.class
 fr\incendie\RemoveFireCommand.class
+fr\incendie\FireInteractListener$1.class
 fr\incendie\Main$1.class

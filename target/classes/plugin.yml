@@ -19,6 +19,10 @@ commands:
     description: Supprime une zone d'incendie par nom
     usage: /<command> <nomZone>
     permission: plugin.startfire
+  extinguishitem:
+    description: Définit l'objet qui éteindra les incendies au clic droit
+    usage: /<command> <materialId>
+    permission: plugin.startfire
 # Permissions du plugin
 permissions:
   plugin.startfire:
