@@ -18,6 +18,8 @@ public class Main extends JavaPlugin {
 
         // Enregistrement des commandes
         this.getCommand("startfire").setExecutor(new StartFireCommand(this));
+        this.getCommand("listfires").setExecutor(new ListFireCommand(this));
+        this.getCommand("removefire").setExecutor(new RemoveFireCommand(this));
 
         // Enregistrement des events
         getServer().getPluginManager().registerEvents(new FireListener(), this);
@@ -73,5 +75,21 @@ public class Main extends JavaPlugin {
 
     public List<FireZone> getFireZones() {
         return fireZones;
+    }
+
+    /**
+     * Remove a fire zone by name and extinguish it. Returns true if removed.
+     */
+    public boolean removeFireZone(String name) {
+        Iterator<FireZone> it = fireZones.iterator();
+        while (it.hasNext()) {
+            FireZone z = it.next();
+            if (z.getName().equalsIgnoreCase(name)) {
+                z.extinguish();
+                it.remove();
+                return true;
+            }
+        }
+        return false;
     }
 }

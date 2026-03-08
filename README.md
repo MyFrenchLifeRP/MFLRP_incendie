@@ -67,6 +67,22 @@ Plugin_MFLRP/
 ```
 crée une zone nommée "foret" entre les niveaux 60 et 80, montant jusqu'à 50 blocs de rayon.
 
+### /listfires
+**Description** : Affiche la liste des zones d'incendie actives avec leurs coordonnées et rayons actuels.
+
+**Utilisation** :
+```
+/listfires
+```
+
+### /removefire
+**Description** : Supprime complètement une zone d'incendie existante par son nom. Le feu est éteint et n'apparaîtra plus.
+
+**Utilisation** :
+```
+/removefire <nomZone>
+```
+
 ## Permissions
 
 ### plugin.startfire

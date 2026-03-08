@@ -11,7 +11,14 @@ commands:
     description: Démarre un incendie autour du joueur avec paramètres
     usage: /<command> <nom> <hauteurMin> <hauteurMax> <tailleMax>
     permission: plugin.startfire
-
+  listfires:
+    description: Affiche la liste des zones d'incendie actives
+    usage: /<command>
+    permission: plugin.startfire
+  removefire:
+    description: Supprime une zone d'incendie par nom
+    usage: /<command> <nomZone>
+    permission: plugin.startfire
 # Permissions du plugin
 permissions:
   plugin.startfire:
