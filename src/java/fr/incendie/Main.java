@@ -36,14 +36,15 @@ public class Main extends JavaPlugin {
         // Enregistrement des events
         getServer().getPluginManager().registerEvents(new FireListener(), this);
 
-        // Scheduler pour la propagation du feu
+        // Scheduler pour la propagation et le maintien du feu (1 seconde = 20 ticks)
         new BukkitRunnable() {
+            private int tickCount = 0;
+
             @Override
             public void run() {
+                tickCount++;
                 long currentTime = System.currentTimeMillis();
-                Iterator<FireZone> iterator = fireZones.iterator();
-                while (iterator.hasNext()) {
-                    FireZone zone = iterator.next();
+                for (FireZone zone : fireZones) {
                     if (zone.canResumeAfterControlled(currentTime)) {
                         zone.resumeAfterControlled();
                     }
@@ -51,29 +52,20 @@ public class Main extends JavaPlugin {
                         continue;
                     }
 
-                    long elapsed = currentTime - zone.getStartTime();
-                    // Calculer une croissance lineaire du rayon de 3 a maxSize sur 30 minutes
-                    int targetRadius = 3;
-                    long duration = 30 * 60 * 1000; // 30 minutes en ms
-                    if (elapsed >= duration) {
-                        targetRadius = zone.getMaxSize();
-                    } else {
-                        double fraction = (double) elapsed / (double) duration;
-                        targetRadius = 3 + (int) Math.round((zone.getMaxSize() - 3) * fraction);
-                        if (targetRadius > zone.getMaxSize()) {
-                            targetRadius = zone.getMaxSize();
-                        }
+                    // Propager une flamme si le delai est ecoule
+                    long msSinceLastSpread = currentTime - zone.getLastSpreadTime();
+                    if (!zone.isFullySpread() && msSinceLastSpread >= zone.getPropagationSpeedSeconds() * 1000L) {
+                        zone.spreadOneFire();
+                        zone.setLastSpreadTime(currentTime);
                     }
 
-                    if (targetRadius > zone.getRadius()) {
-                        zone.expand(targetRadius);
+                    // Rafraichir le feu toutes les 60 secondes pour le maintenir actif
+                    if (tickCount % 60 == 0) {
+                        zone.refreshFire();
                     }
-
-                    // Rafraichir le feu a chaque intervalle pour le maintenir actif (sans l'eteindre)
-                    zone.placeFire(zone.getRadius());
                 }
             }
-        }.runTaskTimer(this, 1200L, 1200L); // toutes les 60 secondes (premier passage apres 60s)
+        }.runTaskTimer(this, 20L, 20L); // toutes les secondes (20 ticks)
     }
 
     @Override
@@ -175,15 +167,15 @@ public class Main extends JavaPlugin {
             int minHeight = getConfig().getInt(base + ".minHeight");
             int maxHeight = getConfig().getInt(base + ".maxHeight");
             int maxSize = getConfig().getInt(base + ".maxSize");
-            int radius = getConfig().getInt(base + ".radius", 3);
-            long startTime = getConfig().getLong(base + ".startTime", System.currentTimeMillis());
+            int propagationSpeedSeconds = getConfig().getInt(base + ".propagationSpeedSeconds", 30);
+            long lastSpreadTime = getConfig().getLong(base + ".lastSpreadTime", System.currentTimeMillis());
             List<String> litFireKeys = getConfig().getStringList(base + ".litFireBlocks");
             List<String> suppressedKeys = getConfig().getStringList(base + ".suppressedFireBlocks");
             long controlledUntil = getConfig().getLong(base + ".controlledUntil", 0L);
             boolean hasSnapshot = litFireKeys != null && !litFireKeys.isEmpty();
 
             Location center = new Location(world, x, y, z);
-            FireZone zone = new FireZone(name, center, minHeight, maxHeight, maxSize, radius, startTime, !hasSnapshot);
+            FireZone zone = new FireZone(name, center, minHeight, maxHeight, maxSize, propagationSpeedSeconds, lastSpreadTime);
 
             if (hasSnapshot) {
                 for (String keyLoc : litFireKeys) {
@@ -205,6 +197,11 @@ public class Main extends JavaPlugin {
                         // ignore malformed snapshot entry
                     }
                 }
+                // Reconstruire la frontiere de propagation a partir du snapshot
+                zone.rebuildFrontier();
+            } else {
+                // Pas de snapshot : placer le feu initial au centre
+                zone.rebuildFrontier();
             }
 
             if (suppressedKeys != null) {
@@ -247,8 +244,8 @@ public class Main extends JavaPlugin {
             getConfig().set(base + ".minHeight", zone.getMinHeight());
             getConfig().set(base + ".maxHeight", zone.getMaxHeight());
             getConfig().set(base + ".maxSize", zone.getMaxSize());
-            getConfig().set(base + ".radius", zone.getRadius());
-            getConfig().set(base + ".startTime", zone.getStartTime());
+            getConfig().set(base + ".propagationSpeedSeconds", zone.getPropagationSpeedSeconds());
+            getConfig().set(base + ".lastSpreadTime", zone.getLastSpreadTime());
             getConfig().set(base + ".litFireBlocks", zone.getLitFireBlockKeys());
             getConfig().set(base + ".suppressedFireBlocks", zone.getSuppressedFireKeys());
             getConfig().set(base + ".controlledUntil", zone.getControlledUntil());

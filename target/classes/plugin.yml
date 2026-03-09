@@ -9,7 +9,7 @@ description: Plugin Minecraft pour serveur MFLRP
 commands:
   startfire:
     description: Démarre un incendie autour du joueur avec paramètres
-    usage: /<command> <nom> <hauteurMin> <hauteurMax> <tailleMax>
+    usage: /<command> <nom> <hauteurMin> <hauteurMax> <tailleMax> <vitessePropagation>
     permission: plugin.startfire
   listfires:
     description: Affiche la liste des zones d'incendie actives

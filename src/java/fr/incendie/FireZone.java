@@ -3,6 +3,7 @@ package fr.incendie;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Random;
 import java.util.Set;
 
 import org.bukkit.Location;
@@ -12,85 +13,156 @@ import org.bukkit.block.Block;
 
 public class FireZone {
     private static final long CONTROLLED_COOLDOWN_MS = 30L * 60L * 1000L;
+    private static final Random RANDOM = new Random();
+    // 8 directions horizontales pour la propagation
+    private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
+    private static final int[] DZ = {0, 0, 1, -1, 1, -1, 1, -1};
 
     private String name;
     private Location center;
     private int minHeight;
     private int maxHeight;
     private int maxSize;
-    private int radius;
-    private long startTime;
+    private int propagationSpeedSeconds;
+    private long lastSpreadTime;
+    private int currentRadius = 0;
+
     private Set<Location> fireBlocks = new HashSet<>();
+    private Set<String> fireBlockKeys = new HashSet<>();
     private Set<String> suppressedFireKeys = new HashSet<>();
+    private Set<String> frontierXZKeys = new HashSet<>();
     private long controlledUntil;
 
-    /**
-        * Cree une nouvelle zone d'incendie.
-        * @param name nom unique de la zone
-        * @param center position centrale (souvent la position du joueur)
-        * @param minHeight niveau vertical minimal ou le feu peut apparaitre
-        * @param maxHeight niveau vertical maximal ou le feu peut apparaitre
-        * @param maxSize rayon final apres propagation (blocs)
-     */
-    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize) {
-        this(name, center, minHeight, maxHeight, maxSize, 3, System.currentTimeMillis(), true);
-    }
-
-    /**
-        * Cree une zone d'incendie a partir de donnees persistees.
-     */
-    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int radius, long startTime) {
-        this(name, center, minHeight, maxHeight, maxSize, radius, startTime, true);
-    }
-
-    /**
-        * Cree une zone d'incendie a partir de donnees persistees.
-     */
-    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int radius, long startTime,
-            boolean placeFireNow) {
+    /** Cree une nouvelle zone d'incendie. */
+    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int propagationSpeedSeconds) {
         this.name = name;
         this.center = center;
         this.minHeight = minHeight;
         this.maxHeight = maxHeight;
         this.maxSize = maxSize;
-        this.radius = Math.max(1, radius);
-        this.startTime = startTime;
-        if (placeFireNow) {
-            placeFire(this.radius);
+        this.propagationSpeedSeconds = Math.max(1, propagationSpeedSeconds);
+        this.lastSpreadTime = System.currentTimeMillis();
+        placeInitialFire();
+    }
+
+    /** Cree une zone d'incendie a partir de donnees persistees (sans placement initial). */
+    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int propagationSpeedSeconds, long lastSpreadTime) {
+        this.name = name;
+        this.center = center;
+        this.minHeight = minHeight;
+        this.maxHeight = maxHeight;
+        this.maxSize = maxSize;
+        this.propagationSpeedSeconds = Math.max(1, propagationSpeedSeconds);
+        this.lastSpreadTime = lastSpreadTime;
+    }
+
+    private void placeInitialFire() {
+        int cx = center.getBlockX();
+        int cz = center.getBlockZ();
+        Location fireLoc = findValidFireLocation(center.getWorld(), cx, cz);
+        if (fireLoc != null) {
+            fireLoc.getBlock().setType(Material.FIRE);
+            trackFireBlock(fireLoc);
+            addNeighborsToFrontier(fireLoc);
+        }
+    }
+
+    private Location findValidFireLocation(World world, int x, int z) {
+        for (int y = maxHeight; y >= minHeight; y--) {
+            Block block = world.getBlockAt(x, y, z);
+            if (block.getType().isSolid()) {
+                Block above = world.getBlockAt(x, y + 1, z);
+                String key = toBlockKey(above.getLocation());
+                if (!suppressedFireKeys.contains(key) && above.getType() == Material.AIR && above.getY() <= maxHeight) {
+                    return above.getLocation();
+                }
+                break;
+            }
+        }
+        return null;
+    }
+
+    private void trackFireBlock(Location loc) {
+        String key = toBlockKey(loc);
+        fireBlocks.add(loc);
+        fireBlockKeys.add(key);
+        int dx = loc.getBlockX() - center.getBlockX();
+        int dz = loc.getBlockZ() - center.getBlockZ();
+        int dist = (int) Math.sqrt(dx * dx + dz * dz);
+        if (dist > currentRadius) currentRadius = dist;
+    }
+
+    private void addNeighborsToFrontier(Location fireLoc) {
+        World world = fireLoc.getWorld();
+        int fx = fireLoc.getBlockX();
+        int fz = fireLoc.getBlockZ();
+        int cx = center.getBlockX();
+        int cz = center.getBlockZ();
+
+        for (int i = 0; i < DX.length; i++) {
+            int nx = fx + DX[i];
+            int nz = fz + DZ[i];
+            double dist2 = (double)(nx - cx) * (nx - cx) + (double)(nz - cz) * (nz - cz);
+            if (dist2 > (double) maxSize * maxSize) continue;
+
+            String xzKey = nx + "," + nz;
+            if (frontierXZKeys.contains(xzKey)) continue;
+
+            Location candidate = findValidFireLocation(world, nx, nz);
+            if (candidate == null) continue;
+            if (fireBlockKeys.contains(toBlockKey(candidate))) continue;
+
+            frontierXZKeys.add(xzKey);
         }
     }
 
     /**
-        * Place ou rafraichit le cercle de feu avec le rayon donne.
-        * Cette methode respecte la plage de hauteurs configuree lors de la
-        * recherche d'un bloc valide a enflammer.
+     * Reconstruit la frontiere a partir des blocs de feu existants.
+     * A appeler apres chargement du snapshot de persistance.
      */
-    public void placeFire(int radius) {
-        World world = center.getWorld();
-        int cx = center.getBlockX();
-        int cz = center.getBlockZ();
+    public void rebuildFrontier() {
+        frontierXZKeys.clear();
+        for (Location loc : fireBlocks) {
+            addNeighborsToFrontier(loc);
+        }
+    }
 
-        for (int x = cx - radius; x <= cx + radius; x++) {
-            for (int z = cz - radius; z <= cz + radius; z++) {
-                if ((x - cx) * (x - cx) + (z - cz) * (z - cz) <= radius * radius) {
-                    // rechercher un bloc solide entre minHeight et maxHeight
-                    for (int y = maxHeight; y >= minHeight; y--) {
-                        Block block = world.getBlockAt(x, y, z);
-                        if (block.getType().isSolid()) {
-                            Block above = world.getBlockAt(x, y + 1, z);
-                            String key = toBlockKey(above.getLocation());
-                            if (suppressedFireKeys.contains(key)) {
-                                break;
-                            }
-                            // ne pas dépasser la hauteur max pour le feu lui-même
-                            if (above.getType() == Material.AIR && above.getY() <= maxHeight) {
-                                above.setType(Material.FIRE);
-                                fireBlocks.add(above.getLocation());
-                            }
-                            break;
-                        }
-                    }
-                }
+    /**
+     * Propage le feu vers un bloc aleatoire adjacent.
+     * @return true si un nouveau feu a ete place
+     */
+    public boolean spreadOneFire() {
+        if (frontierXZKeys.isEmpty()) return false;
+
+        List<String> frontierList = new ArrayList<>(frontierXZKeys);
+        while (!frontierList.isEmpty()) {
+            int idx = RANDOM.nextInt(frontierList.size());
+            String xzKey = frontierList.remove(idx);
+            frontierXZKeys.remove(xzKey);
+
+            String[] parts = xzKey.split(",");
+            int nx = Integer.parseInt(parts[0]);
+            int nz = Integer.parseInt(parts[1]);
+
+            Location candidate = findValidFireLocation(center.getWorld(), nx, nz);
+            if (candidate == null) continue;
+            String locKey = toBlockKey(candidate);
+            if (fireBlockKeys.contains(locKey)) continue;
+            if (suppressedFireKeys.contains(locKey)) continue;
+
+            candidate.getBlock().setType(Material.FIRE);
+            trackFireBlock(candidate);
+            addNeighborsToFrontier(candidate);
+            return true;
+        }
+        return false;
+    }
+
+    /** Re-allume les blocs de feu suivis qui se sont eteints naturellement. */
+    public void refreshFire() {
+        for (Location loc : fireBlocks) {
+            if (loc.getBlock().getType() == Material.AIR) {
+                loc.getBlock().setType(Material.FIRE);
             }
         }
     }
@@ -102,43 +174,35 @@ public class FireZone {
             }
         }
         fireBlocks.clear();
-    }
-
-    public void expand(int newRadius) {
-        if (newRadius <= radius) {
-            return;
-        }
-        extinguish();
-        this.radius = newRadius;
-        placeFire(radius);
+        fireBlockKeys.clear();
+        frontierXZKeys.clear();
+        currentRadius = 0;
     }
 
     public void trackExistingLitFire(Location location) {
-        if (location == null) {
-            return;
-        }
-        fireBlocks.add(location.getBlock().getLocation());
+        if (location == null) return;
+        trackFireBlock(location.getBlock().getLocation());
     }
 
     public void untrackFire(Location location) {
-        if (location == null) {
-            return;
-        }
-        fireBlocks.remove(location.getBlock().getLocation());
+        if (location == null) return;
+        Location blockLoc = location.getBlock().getLocation();
+        fireBlocks.remove(blockLoc);
+        fireBlockKeys.remove(toBlockKey(blockLoc));
     }
 
     /**
-        * Marque une flamme comme eteinte manuellement.
-        * @return true quand toute la zone devient maitrisee (toutes les flammes eteintes)
+     * Marque une flamme comme eteinte manuellement.
+     * @return true quand toute la zone devient maitrisee (toutes les flammes eteintes)
      */
     public boolean registerManualExtinguish(Location location, long nowMs) {
-        if (location == null) {
-            return false;
-        }
+        if (location == null) return false;
 
         Location blockLoc = location.getBlock().getLocation();
-        suppressedFireKeys.add(toBlockKey(blockLoc));
+        String key = toBlockKey(blockLoc);
+        suppressedFireKeys.add(key);
         fireBlocks.remove(blockLoc);
+        fireBlockKeys.remove(key);
 
         if (fireBlocks.isEmpty()) {
             controlledUntil = Math.max(controlledUntil, nowMs + CONTROLLED_COOLDOWN_MS);
@@ -158,6 +222,9 @@ public class FireZone {
     public void resumeAfterControlled() {
         controlledUntil = 0L;
         suppressedFireKeys.clear();
+        frontierXZKeys.clear();
+        currentRadius = 0;
+        placeInitialFire();
     }
 
     public long getControlledUntil() {
@@ -169,9 +236,7 @@ public class FireZone {
     }
 
     public void addSuppressedKey(String key) {
-        if (key == null || key.isEmpty()) {
-            return;
-        }
+        if (key == null || key.isEmpty()) return;
         suppressedFireKeys.add(key);
     }
 
@@ -179,9 +244,7 @@ public class FireZone {
         return new ArrayList<>(suppressedFireKeys);
     }
 
-    /**
-        * Snapshot des flammes actuellement allumees dans le monde uniquement.
-     */
+    /** Snapshot des flammes actuellement allumees dans le monde uniquement. */
     public List<String> getLitFireBlockKeys() {
         List<String> result = new ArrayList<>();
         for (Location loc : fireBlocks) {
@@ -196,53 +259,28 @@ public class FireZone {
         return location.getBlockX() + "," + location.getBlockY() + "," + location.getBlockZ();
     }
 
-    public long getStartTime() {
-        return startTime;
-    }
+    // --- Getters ---
 
-    public int getRadius() {
-        return radius;
-    }
+    public String getName() { return name; }
+    public Location getCenter() { return center; }
+    public int getMinHeight() { return minHeight; }
+    public int getMaxHeight() { return maxHeight; }
+    public int getMaxSize() { return maxSize; }
+    public int getRadius() { return currentRadius; }
+    public int getPropagationSpeedSeconds() { return propagationSpeedSeconds; }
+    public long getLastSpreadTime() { return lastSpreadTime; }
+    public void setLastSpreadTime(long t) { this.lastSpreadTime = t; }
+    public int getFireCount() { return fireBlocks.size(); }
 
-    public Location getCenter() {
-        return center;
-    }
+    /** Retourne true si toute la zone a ete couverte (frontiere vide). */
+    public boolean isFullySpread() { return frontierXZKeys.isEmpty(); }
 
-    /**
-        * Verifie si une position est dans cette zone sur le plan horizontal.
-     */
+    /** Verifie si une position est dans cette zone sur le plan horizontal. */
     public boolean contains(Location location) {
-        if (location == null || location.getWorld() == null || center.getWorld() == null) {
-            return false;
-        }
-        if (!center.getWorld().equals(location.getWorld())) {
-            return false;
-        }
+        if (location == null || location.getWorld() == null || center.getWorld() == null) return false;
+        if (!center.getWorld().equals(location.getWorld())) return false;
         double dx = location.getX() - center.getX();
         double dz = location.getZ() - center.getZ();
-        return (dx * dx + dz * dz) <= (radius * radius);
-    }
-
-    public String getName() {
-        return name;
-    }
-
-    public int getMaxSize() {
-        return maxSize;
-    }
-
-    public int getMinHeight() {
-        return minHeight;
-    }
-
-    public int getMaxHeight() {
-        return maxHeight;
-    }
-
-    /**
-        * Nombre de blocs de feu actuellement suivis dans cette zone.
-     */
-    public int getFireCount() {
-        return fireBlocks.size();
+        return (dx * dx + dz * dz) <= ((double) maxSize * maxSize);
     }
 }
