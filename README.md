@@ -39,22 +39,27 @@ Plugin_MFLRP/
 ## Commandes
 
 ### /startfire
+
 **Description** : Démarre un incendie autour du joueur avec paramètres personnalisés.
 
 **Utilisation** :
+
 ```
 /startfire <nom> <hauteurMin> <hauteurMax> <tailleMax>
 ```
 
 **Conditions** :
+
 - Le joueur doit exécuter la commande et avoir la permission `plugin.startfire`
 
 **Paramètres** :
+
 - `<nom>` : identifiant de la zone d'incendie (affiché dans les alertes)
 - `<hauteurMin>` et `<hauteurMax>` : limites verticales pour l'apparition du feu
 - `<tailleMax>` : rayon final (minimum 3) après 30 minutes de propagation
 
 **Effets** :
+
 - Feu initial de rayon 3 autour du joueur
 - Alerte globale avec le nom et les coordonnées de la zone
 - Le rayon augmente progressivement jusqu'à `tailleMax` sur 30 minutes
@@ -62,50 +67,73 @@ Plugin_MFLRP/
 > ⚠️ Si le plugin ne trouve aucun bloc solide dans la plage de hauteurs spécifiée, aucun feu ne sera posé. Le joueur recevra un message d'avertissement dans ce cas.
 
 **Exemple** :
+
 ```
 /startfire foret 60 80 50
 ```
+
 crée une zone nommée "foret" entre les niveaux 60 et 80, montant jusqu'à 50 blocs de rayon.
 
 ### /listfires
+
 **Description** : Affiche la liste des zones d'incendie actives avec leurs coordonnées et rayons actuels.
 
 **Utilisation** :
+
 ```
 /listfires
 ```
 
 ### /removefire
+
 **Description** : Supprime complètement une zone d'incendie existante par son nom. Le feu est éteint et n'apparaîtra plus.
 
 **Utilisation** :
+
 ```
 /removefire <nomZone>
 ```
 
 ### /extinguishitem
-**Description** : Configure un type d'item (par son ID) qui agira comme outil d'extinction : un clic droit avec cet item éteint instantanément le foyer actif de la zone dans laquelle se trouve le joueur.
+
+**Description** : Configure un type d'item (par son nom Material ou son ID numérique) et un délai en secondes avant extinction : un clic droit avec cet item éteint une seule flamme ciblée.
 
 **Utilisation** :
+
 ```
-/extinguishitem <materialId>
+/extinguishitem <materialId> <delaiSecondes>
 ```
 
-- `<materialId>` correspond au nom `Material` de Bukkit (ex. `STICK`, `IRON_INGOT`, `BLAZE_ROD`).
+- `<materialId>` peut être soit le nom `Material` Bukkit (ex. `STICK`, `IRON_INGOT`, `BLAZE_ROD`), soit son ID numérique legacy 1.12 (ex. `280` pour `STICK`).
+- `<delaiSecondes>` définit le temps d'attente avant extinction.
+- Si `<delaiSecondes>` vaut `0`, l'extinction est instantanée.
 - Le joueur reçoit un message de confirmation.
-- La configuration est globale au plugin et persiste tant que le serveur n'est pas redémarré.
+- La configuration est globale au plugin et persiste après redémarrage/reload du serveur.
 
-Une fois l'item défini, équipe‑le et fais un clic droit pour éteindre l'incendie autour de toi.
+Une fois l'item défini, équipe‑le et fais un clic droit sur une flamme pour en éteindre une seule.
 
+### /extinguishstatus
+
+**Description** : Affiche la configuration d'extinction actuellement chargée (item + ID + délai en secondes).
+
+**Utilisation** :
+
+```
+/extinguishstatus
+```
+
+Permet de vérifier rapidement en jeu si le serveur a bien chargé la bonne configuration.
 
 ## Permissions
 
 ### plugin.startfire
+
 **Description** : Permission pour utiliser la commande /startfire
 
 **Par défaut** : op (administrateurs seulement)
 
-**Attribution** : 
+**Attribution** :
+
 ```yaml
 permissions:
   plugin.startfire:

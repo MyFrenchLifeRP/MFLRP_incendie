@@ -21,7 +21,11 @@ commands:
     permission: plugin.startfire
   extinguishitem:
     description: Définit l'objet qui éteindra les incendies au clic droit
-    usage: /<command> <materialId>
+    usage: /<command> <materialId> <delaiSecondes>
+    permission: plugin.startfire
+  extinguishstatus:
+    description: Affiche l'item et le delai d'extinction actuellement charges
+    usage: /<command>
     permission: plugin.startfire
 # Permissions du plugin
 permissions:

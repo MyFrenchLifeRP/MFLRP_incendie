@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.bukkit.Location;
+import org.bukkit.Material;
+import org.bukkit.World;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.bukkit.scheduler.BukkitRunnable;
 
@@ -16,13 +20,17 @@ public class Main extends JavaPlugin {
         // Code exécuté lors de l'activation du plugin
         getLogger().info("Plugin MFLRP activé avec succès !");
 
+        saveDefaultConfig();
+        loadPersistentState();
+
         // Enregistrement des commandes
         this.getCommand("startfire").setExecutor(new StartFireCommand(this));
         this.getCommand("listfires").setExecutor(new ListFireCommand(this));
         this.getCommand("removefire").setExecutor(new RemoveFireCommand(this));
         this.getCommand("extinguishitem").setExecutor(new ExtinguishItemCommand(this));
+        this.getCommand("extinguishstatus").setExecutor(new ExtinguishStatusCommand(this));
 
-        // interaction listener for extinguisher tool
+        // Listener d'interaction pour l'outil d'extinction
         getServer().getPluginManager().registerEvents(new FireInteractListener(this), this);
 
         // Enregistrement des events
@@ -36,10 +44,17 @@ public class Main extends JavaPlugin {
                 Iterator<FireZone> iterator = fireZones.iterator();
                 while (iterator.hasNext()) {
                     FireZone zone = iterator.next();
+                    if (zone.canResumeAfterControlled(currentTime)) {
+                        zone.resumeAfterControlled();
+                    }
+                    if (zone.isControlled(currentTime)) {
+                        continue;
+                    }
+
                     long elapsed = currentTime - zone.getStartTime();
-                    // calculate a linear radius growth from 3 to maxSize over 30 minutes
+                    // Calculer une croissance lineaire du rayon de 3 a maxSize sur 30 minutes
                     int targetRadius = 3;
-                    long duration = 30 * 60 * 1000; // 30 minutes in ms
+                    long duration = 30 * 60 * 1000; // 30 minutes en ms
                     if (elapsed >= duration) {
                         targetRadius = zone.getMaxSize();
                     } else {
@@ -54,11 +69,11 @@ public class Main extends JavaPlugin {
                         zone.expand(targetRadius);
                     }
 
-                    // refresh fire every tick interval to keep it alive (without extinguishing)
+                    // Rafraichir le feu a chaque intervalle pour le maintenir actif (sans l'eteindre)
                     zone.placeFire(zone.getRadius());
                 }
             }
-        }.runTaskTimer(this, 0L, 1200L); // toutes les 60 secondes
+        }.runTaskTimer(this, 1200L, 1200L); // toutes les 60 secondes (premier passage apres 60s)
     }
 
     @Override
@@ -66,15 +81,12 @@ public class Main extends JavaPlugin {
         // Code exécuté lors de la désactivation du plugin
         getLogger().info("Plugin MFLRP désactivé !");
 
-        // Éteindre tous les feux
-        for (FireZone zone : fireZones) {
-            zone.extinguish();
-        }
-        fireZones.clear();
+        savePersistentState();
     }
 
     public void addFireZone(FireZone zone) {
         fireZones.add(zone);
+        savePersistentState();
     }
 
     public List<FireZone> getFireZones() {
@@ -82,7 +94,7 @@ public class Main extends JavaPlugin {
     }
 
     /**
-     * Remove a fire zone by name and extinguish it. Returns true if removed.
+        * Supprime une zone d'incendie par nom et l'eteint. Retourne true si supprimee.
      */
     public boolean removeFireZone(String name) {
         Iterator<FireZone> it = fireZones.iterator();
@@ -91,20 +103,158 @@ public class Main extends JavaPlugin {
             if (z.getName().equalsIgnoreCase(name)) {
                 z.extinguish();
                 it.remove();
+                savePersistentState();
                 return true;
             }
         }
         return false;
     }
 
-    // material used as extinguisher tool
+    // Material utilise comme outil d'extinction
     private org.bukkit.Material extinguisherMaterial;
+    private int extinguishDelaySeconds = 2;
 
     public void setExtinguisherMaterial(org.bukkit.Material mat) {
         this.extinguisherMaterial = mat;
+        savePersistentState();
     }
 
     public org.bukkit.Material getExtinguisherMaterial() {
         return extinguisherMaterial;
+    }
+
+    public int getExtinguishDelaySeconds() {
+        return extinguishDelaySeconds;
+    }
+
+    public void setExtinguishDelaySeconds(int extinguishDelaySeconds) {
+        this.extinguishDelaySeconds = Math.max(0, extinguishDelaySeconds);
+        savePersistentState();
+    }
+
+    public void saveStateNow() {
+        savePersistentState();
+    }
+
+    private void loadPersistentState() {
+        fireZones.clear();
+
+        String materialName = getConfig().getString("extinguisher.material");
+        if (materialName != null && !materialName.isEmpty()) {
+            Material loadedMaterial = Material.getMaterial(materialName.toUpperCase());
+            if (loadedMaterial != null && loadedMaterial != Material.AIR) {
+                this.extinguisherMaterial = loadedMaterial;
+            }
+        }
+
+        this.extinguishDelaySeconds = Math.max(0, getConfig().getInt("extinguisher.delaySeconds", 2));
+
+        ConfigurationSection zones = getConfig().getConfigurationSection("fireZones");
+        if (zones == null) {
+            return;
+        }
+
+        int loadedCount = 0;
+        for (String key : zones.getKeys(false)) {
+            String base = "fireZones." + key;
+            String name = getConfig().getString(base + ".name");
+            String worldName = getConfig().getString(base + ".world");
+            if (name == null || worldName == null) {
+                continue;
+            }
+
+            World world = getServer().getWorld(worldName);
+            if (world == null) {
+                getLogger().warning("Zone '" + name + "' ignorée: monde introuvable ('" + worldName + "').");
+                continue;
+            }
+
+            double x = getConfig().getDouble(base + ".x");
+            double y = getConfig().getDouble(base + ".y");
+            double z = getConfig().getDouble(base + ".z");
+            int minHeight = getConfig().getInt(base + ".minHeight");
+            int maxHeight = getConfig().getInt(base + ".maxHeight");
+            int maxSize = getConfig().getInt(base + ".maxSize");
+            int radius = getConfig().getInt(base + ".radius", 3);
+            long startTime = getConfig().getLong(base + ".startTime", System.currentTimeMillis());
+            List<String> litFireKeys = getConfig().getStringList(base + ".litFireBlocks");
+            List<String> suppressedKeys = getConfig().getStringList(base + ".suppressedFireBlocks");
+            long controlledUntil = getConfig().getLong(base + ".controlledUntil", 0L);
+            boolean hasSnapshot = litFireKeys != null && !litFireKeys.isEmpty();
+
+            Location center = new Location(world, x, y, z);
+            FireZone zone = new FireZone(name, center, minHeight, maxHeight, maxSize, radius, startTime, !hasSnapshot);
+
+            if (hasSnapshot) {
+                for (String keyLoc : litFireKeys) {
+                    String[] parts = keyLoc.split(",");
+                    if (parts.length != 3) {
+                        continue;
+                    }
+                    try {
+                        int bx = Integer.parseInt(parts[0]);
+                        int by = Integer.parseInt(parts[1]);
+                        int bz = Integer.parseInt(parts[2]);
+                        Location fireLoc = new Location(world, bx, by, bz);
+                        zone.trackExistingLitFire(fireLoc);
+
+                        if (fireLoc.getBlock().getType() == Material.AIR) {
+                            fireLoc.getBlock().setType(Material.FIRE);
+                        }
+                    } catch (NumberFormatException ignored) {
+                        // ignore malformed snapshot entry
+                    }
+                }
+            }
+
+            if (suppressedKeys != null) {
+                for (String suppressed : suppressedKeys) {
+                    zone.addSuppressedKey(suppressed);
+                }
+            }
+            zone.setControlledUntil(controlledUntil);
+
+            fireZones.add(zone);
+            loadedCount++;
+        }
+
+        if (loadedCount > 0) {
+            getLogger().info(loadedCount + " zone(s) d'incendie restauree(s) depuis la configuration.");
+        }
+    }
+
+    private void savePersistentState() {
+        if (extinguisherMaterial != null) {
+            getConfig().set("extinguisher.material", extinguisherMaterial.name());
+        } else {
+            getConfig().set("extinguisher.material", null);
+        }
+        getConfig().set("extinguisher.delaySeconds", extinguishDelaySeconds);
+
+        getConfig().set("fireZones", null);
+        int index = 0;
+        for (FireZone zone : fireZones) {
+            if (zone.getCenter() == null || zone.getCenter().getWorld() == null) {
+                continue;
+            }
+
+            String base = "fireZones." + index;
+            getConfig().set(base + ".name", zone.getName());
+            getConfig().set(base + ".world", zone.getCenter().getWorld().getName());
+            getConfig().set(base + ".x", zone.getCenter().getX());
+            getConfig().set(base + ".y", zone.getCenter().getY());
+            getConfig().set(base + ".z", zone.getCenter().getZ());
+            getConfig().set(base + ".minHeight", zone.getMinHeight());
+            getConfig().set(base + ".maxHeight", zone.getMaxHeight());
+            getConfig().set(base + ".maxSize", zone.getMaxSize());
+            getConfig().set(base + ".radius", zone.getRadius());
+            getConfig().set(base + ".startTime", zone.getStartTime());
+            getConfig().set(base + ".litFireBlocks", zone.getLitFireBlockKeys());
+            getConfig().set(base + ".suppressedFireBlocks", zone.getSuppressedFireKeys());
+            getConfig().set(base + ".controlledUntil", zone.getControlledUntil());
+            index++;
+        }
+
+        saveConfig();
     }
 }

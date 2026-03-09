@@ -29,7 +29,7 @@ public class StartFireCommand implements CommandExecutor {
             return true;
         }
 
-        // parse arguments: <name> <minHeight> <maxHeight> <maxRadius>
+        // Parser les arguments : <nom> <hauteurMin> <hauteurMax> <tailleMax>
         if (args.length < 4) {
             player.sendMessage(ChatColor.RED + "Usage: /" + label + " <nom> <hauteurMin> <hauteurMax> <tailleMax>");
             return true;
@@ -66,7 +66,7 @@ public class StartFireCommand implements CommandExecutor {
         plugin.getServer().broadcastMessage(ChatColor.RED + "Alerte incendie ! Zone '" + name + "' au centre "
                 + center.getBlockX() + ", " + center.getBlockY() + ", " + center.getBlockZ());
 
-        // feedback to player
+        // Retour d'information au joueur
         if (fireZone.getFireCount() == 0) {
             player.sendMessage(ChatColor.YELLOW + "Aucun feu n'a pu être placé : vérifiez que la plage de hauteurs (min/max) contient le terrain autour de vous.");
         } else {
