@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
+import org.bukkit.ChatColor;
 import org.bukkit.Location;
 import org.bukkit.Material;
 import org.bukkit.World;
@@ -47,6 +48,7 @@ public class Main extends JavaPlugin {
                 for (FireZone zone : fireZones) {
                     if (zone.canResumeAfterControlled(currentTime)) {
                         zone.resumeAfterControlled();
+                        getServer().broadcastMessage(ChatColor.RED + "Alerte incendie ! La zone '" + zone.getName() + "' vient de se red\u00e9clencher !");
                     }
                     if (zone.isControlled(currentTime)) {
                         continue;
@@ -59,9 +61,12 @@ public class Main extends JavaPlugin {
                         zone.setLastSpreadTime(currentTime);
                     }
 
-                    // Rafraichir le feu toutes les 60 secondes pour le maintenir actif
+                    // Rafraichir le feu toutes les 60 secondes et detecter si la zone est eteinte
                     if (tickCount % 60 == 0) {
-                        zone.refreshFire();
+                        boolean anyBurning = zone.refreshFire(currentTime);
+                        if (!anyBurning) {
+                            getServer().broadcastMessage(ChatColor.GREEN + "Feu ma\u00eetris\u00e9 dans la zone '" + zone.getName() + "'. Red\u00e9clenchement dans " + zone.getReIgnitionDelaySeconds() + "s.");
+                        }
                     }
                 }
             }
@@ -168,6 +173,7 @@ public class Main extends JavaPlugin {
             int maxHeight = getConfig().getInt(base + ".maxHeight");
             int maxSize = getConfig().getInt(base + ".maxSize");
             int propagationSpeedSeconds = getConfig().getInt(base + ".propagationSpeedSeconds", 30);
+            int reIgnitionDelaySeconds = getConfig().getInt(base + ".reIgnitionDelaySeconds", 1800);
             long lastSpreadTime = getConfig().getLong(base + ".lastSpreadTime", System.currentTimeMillis());
             List<String> litFireKeys = getConfig().getStringList(base + ".litFireBlocks");
             List<String> suppressedKeys = getConfig().getStringList(base + ".suppressedFireBlocks");
@@ -175,7 +181,7 @@ public class Main extends JavaPlugin {
             boolean hasSnapshot = litFireKeys != null && !litFireKeys.isEmpty();
 
             Location center = new Location(world, x, y, z);
-            FireZone zone = new FireZone(name, center, minHeight, maxHeight, maxSize, propagationSpeedSeconds, lastSpreadTime);
+            FireZone zone = new FireZone(name, center, minHeight, maxHeight, maxSize, propagationSpeedSeconds, reIgnitionDelaySeconds, lastSpreadTime);
 
             if (hasSnapshot) {
                 for (String keyLoc : litFireKeys) {
@@ -245,6 +251,7 @@ public class Main extends JavaPlugin {
             getConfig().set(base + ".maxHeight", zone.getMaxHeight());
             getConfig().set(base + ".maxSize", zone.getMaxSize());
             getConfig().set(base + ".propagationSpeedSeconds", zone.getPropagationSpeedSeconds());
+            getConfig().set(base + ".reIgnitionDelaySeconds", zone.getReIgnitionDelaySeconds());
             getConfig().set(base + ".lastSpreadTime", zone.getLastSpreadTime());
             getConfig().set(base + ".litFireBlocks", zone.getLitFireBlockKeys());
             getConfig().set(base + ".suppressedFireBlocks", zone.getSuppressedFireKeys());

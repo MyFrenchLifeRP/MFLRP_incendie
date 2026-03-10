@@ -45,7 +45,7 @@ Plugin_MFLRP/
 **Utilisation** :
 
 ```
-/startfire <nom> <hauteurMin> <hauteurMax> <tailleMax> <vitessePropagation>
+/startfire <nom> <hauteurMin> <hauteurMax> <tailleMax> <vitessePropagation> <delaiReignition>
 ```
 
 **Conditions** :
@@ -58,6 +58,7 @@ Plugin_MFLRP/
 - `<hauteurMin>` et `<hauteurMax>` : limites verticales pour l'apparition du feu
 - `<tailleMax>` : rayon maximal de la zone (minimum 3)
 - `<vitessePropagation>` : délai en secondes entre chaque nouvelle flamme (ex : `30` = 1 flamme toutes les 30 secondes)
+- `<delaiReignition>` : délai en secondes avant que le feu se redéclenche automatiquement après avoir été entièrement maîtrisé (ex : `300` = redéclenchement après 5 minutes)
 
 **Effets** :
 
@@ -71,10 +72,10 @@ Plugin_MFLRP/
 **Exemple** :
 
 ```
-/startfire foret 60 80 50 30
+/startfire foret 60 80 50 30 300
 ```
 
-Crée une zone nommée "foret" entre les niveaux 60 et 80, rayon max 50 blocs, avec 1 nouvelle flamme toutes les 30 secondes.
+Crée une zone nommée "foret" entre les niveaux 60 et 80, rayon max 50 blocs, avec 1 nouvelle flamme toutes les 30 secondes, et redéclenchement automatique 5 minutes après extinction complète.
 
 ### /listfires
 

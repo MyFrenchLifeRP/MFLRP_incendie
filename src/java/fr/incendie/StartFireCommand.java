@@ -29,21 +29,22 @@ public class StartFireCommand implements CommandExecutor {
             return true;
         }
 
-        // Parser les arguments : <nom> <hauteurMin> <hauteurMax> <tailleMax> <vitessePropagation>
-        if (args.length < 5) {
-            player.sendMessage(ChatColor.RED + "Usage: /" + label + " <nom> <hauteurMin> <hauteurMax> <tailleMax> <vitessePropagation>");
+        // Parser les arguments : <nom> <hauteurMin> <hauteurMax> <tailleMax> <vitessePropagation> <delaiReignition>
+        if (args.length < 6) {
+            player.sendMessage(ChatColor.RED + "Usage: /" + label + " <nom> <hauteurMin> <hauteurMax> <tailleMax> <vitessePropagation> <delaiReignition>");
             return true;
         }
 
         String name = args[0];
-        int minH, maxH, maxR, propSpeed;
+        int minH, maxH, maxR, propSpeed, reIgnitionDelay;
         try {
             minH = Integer.parseInt(args[1]);
             maxH = Integer.parseInt(args[2]);
             maxR = Integer.parseInt(args[3]);
             propSpeed = Integer.parseInt(args[4]);
+            reIgnitionDelay = Integer.parseInt(args[5]);
         } catch (NumberFormatException nfe) {
-            player.sendMessage(ChatColor.RED + "Les hauteurs, la taille et la vitesse doivent être des nombres entiers.");
+            player.sendMessage(ChatColor.RED + "Les hauteurs, la taille, la vitesse et le délai de redéclenchement doivent être des nombres entiers.");
             return true;
         }
 
@@ -62,10 +63,15 @@ public class StartFireCommand implements CommandExecutor {
             return true;
         }
 
+        if (reIgnitionDelay < 1) {
+            player.sendMessage(ChatColor.RED + "Le délai de redéclenchement doit être au moins 1 seconde.");
+            return true;
+        }
+
         Location center = player.getLocation();
 
         // Créer la zone d'incendie
-        FireZone fireZone = new FireZone(name, center, minH, maxH, maxR, propSpeed);
+        FireZone fireZone = new FireZone(name, center, minH, maxH, maxR, propSpeed, reIgnitionDelay);
         plugin.addFireZone(fireZone);
 
         // Alerte globale
@@ -76,7 +82,7 @@ public class StartFireCommand implements CommandExecutor {
         if (fireZone.getFireCount() == 0) {
             player.sendMessage(ChatColor.YELLOW + "Aucun feu n'a pu être placé : vérifiez que la plage de hauteurs (min/max) contient le terrain autour de vous.");
         } else {
-            player.sendMessage(ChatColor.GREEN + "Incendie démarré, zone '" + name + "' (taille max " + maxR + ", 1 flamme/" + propSpeed + "s).");
+            player.sendMessage(ChatColor.GREEN + "Incendie démarré, zone '" + name + "' (taille max " + maxR + ", 1 flamme/" + propSpeed + "s, redéclenchement après " + reIgnitionDelay + "s).");
         }
 
         return true;

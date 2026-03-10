@@ -1,6 +1,7 @@
 package fr.incendie;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Random;
@@ -12,7 +13,6 @@ import org.bukkit.World;
 import org.bukkit.block.Block;
 
 public class FireZone {
-    private static final long CONTROLLED_COOLDOWN_MS = 30L * 60L * 1000L;
     private static final Random RANDOM = new Random();
     // 8 directions horizontales pour la propagation
     private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
@@ -24,35 +24,40 @@ public class FireZone {
     private int maxHeight;
     private int maxSize;
     private int propagationSpeedSeconds;
+    private int reIgnitionDelaySeconds;
     private long lastSpreadTime;
     private int currentRadius = 0;
 
+    // Suivi des blocs de feu
     private Set<Location> fireBlocks = new HashSet<>();
-    private Set<String> fireBlockKeys = new HashSet<>();
-    private Set<String> suppressedFireKeys = new HashSet<>();
-    private Set<String> frontierXZKeys = new HashSet<>();
+    private Set<String> fireBlockKeys  = new HashSet<>(); // "x,y,z"
+    private Set<String> fireXZKeys     = new HashSet<>(); // "x,z"  pour le comptage d'adjacence
+    private Set<String> suppressedFireKeys = new HashSet<>(); // blocs bloques quand la zone est maitrisee
+    private Set<String> frontierXZKeys = new HashSet<>();    // cases candidates pour la propagation
     private long controlledUntil;
 
     /** Cree une nouvelle zone d'incendie. */
-    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int propagationSpeedSeconds) {
+    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int propagationSpeedSeconds, int reIgnitionDelaySeconds) {
         this.name = name;
         this.center = center;
         this.minHeight = minHeight;
         this.maxHeight = maxHeight;
         this.maxSize = maxSize;
         this.propagationSpeedSeconds = Math.max(1, propagationSpeedSeconds);
+        this.reIgnitionDelaySeconds = Math.max(1, reIgnitionDelaySeconds);
         this.lastSpreadTime = System.currentTimeMillis();
         placeInitialFire();
     }
 
     /** Cree une zone d'incendie a partir de donnees persistees (sans placement initial). */
-    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int propagationSpeedSeconds, long lastSpreadTime) {
+    public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int propagationSpeedSeconds, int reIgnitionDelaySeconds, long lastSpreadTime) {
         this.name = name;
         this.center = center;
         this.minHeight = minHeight;
         this.maxHeight = maxHeight;
         this.maxSize = maxSize;
         this.propagationSpeedSeconds = Math.max(1, propagationSpeedSeconds);
+        this.reIgnitionDelaySeconds = Math.max(1, reIgnitionDelaySeconds);
         this.lastSpreadTime = lastSpreadTime;
     }
 
@@ -83,9 +88,9 @@ public class FireZone {
     }
 
     private void trackFireBlock(Location loc) {
-        String key = toBlockKey(loc);
         fireBlocks.add(loc);
-        fireBlockKeys.add(key);
+        fireBlockKeys.add(toBlockKey(loc));
+        fireXZKeys.add(loc.getBlockX() + "," + loc.getBlockZ());
         int dx = loc.getBlockX() - center.getBlockX();
         int dz = loc.getBlockZ() - center.getBlockZ();
         int dist = (int) Math.sqrt(dx * dx + dz * dz);
@@ -107,37 +112,54 @@ public class FireZone {
 
             String xzKey = nx + "," + nz;
             if (frontierXZKeys.contains(xzKey)) continue;
+            if (fireXZKeys.contains(xzKey)) continue;
 
             Location candidate = findValidFireLocation(world, nx, nz);
             if (candidate == null) continue;
-            if (fireBlockKeys.contains(toBlockKey(candidate))) continue;
 
             frontierXZKeys.add(xzKey);
         }
     }
 
     /**
-     * Reconstruit la frontiere a partir des blocs de feu existants.
+     * Reconstruit la frontiere et fireXZKeys a partir des blocs de feu existants.
      * A appeler apres chargement du snapshot de persistance.
      */
     public void rebuildFrontier() {
         frontierXZKeys.clear();
+        fireXZKeys.clear();
+        for (Location loc : fireBlocks) {
+            fireXZKeys.add(loc.getBlockX() + "," + loc.getBlockZ());
+        }
         for (Location loc : fireBlocks) {
             addNeighborsToFrontier(loc);
         }
     }
 
     /**
-     * Propage le feu vers un bloc aleatoire adjacent.
+     * Propage le feu vers un bloc adjacent de facon ponderee et realiste.
+     * Les cases voisines de plusieurs flammes ont plus de chances de s'enflammer.
+     * Poids d'une case = 1 + 2 * (nb de feux adjacents).
      * @return true si un nouveau feu a ete place
      */
     public boolean spreadOneFire() {
         if (frontierXZKeys.isEmpty()) return false;
 
-        List<String> frontierList = new ArrayList<>(frontierXZKeys);
-        while (!frontierList.isEmpty()) {
-            int idx = RANDOM.nextInt(frontierList.size());
-            String xzKey = frontierList.remove(idx);
+        // Construire la liste ponderee
+        List<String> weightedPool = new ArrayList<>();
+        for (String xzKey : frontierXZKeys) {
+            String[] p = xzKey.split(",");
+            int nx = Integer.parseInt(p[0]);
+            int nz = Integer.parseInt(p[1]);
+            int adj = countAdjacentFireXZ(nx, nz);
+            int weight = 1 + adj * 2;
+            for (int w = 0; w < weight; w++) weightedPool.add(xzKey);
+        }
+        Collections.shuffle(weightedPool, RANDOM);
+
+        Set<String> tried = new HashSet<>();
+        for (String xzKey : weightedPool) {
+            if (!tried.add(xzKey)) continue; // deja essaye cette case
             frontierXZKeys.remove(xzKey);
 
             String[] parts = xzKey.split(",");
@@ -158,13 +180,50 @@ public class FireZone {
         return false;
     }
 
-    /** Re-allume les blocs de feu suivis qui se sont eteints naturellement. */
-    public void refreshFire() {
+    /** Nombre de cases XZ voisines actuellement en feu (utilisé pour le poids de propagation). */
+    private int countAdjacentFireXZ(int x, int z) {
+        int count = 0;
+        for (int i = 0; i < DX.length; i++) {
+            if (fireXZKeys.contains((x + DX[i]) + "," + (z + DZ[i]))) count++;
+        }
+        return count;
+    }
+
+    /**
+     * Rafraichit les flammes et detecte si toute la zone a ete eteinte (eau, commandes...).
+     * Si toutes les flammes suivies sont eteintes, la zone passe en mode "maitrise".
+     * @return true si au moins une flamme brule encore, false si la zone vient d'etre maitrisee
+     */
+    public boolean refreshFire(long nowMs) {
+        if (fireBlocks.isEmpty()) return false;
+
+        boolean anyBurning = false;
+        List<Location> naturallyOut = new ArrayList<>();
+
         for (Location loc : fireBlocks) {
-            if (loc.getBlock().getType() == Material.AIR) {
-                loc.getBlock().setType(Material.FIRE);
+            if (loc.getBlock().getType() == Material.FIRE) {
+                anyBurning = true;
+            } else {
+                naturallyOut.add(loc);
             }
         }
+
+        if (!anyBurning) {
+            // Tous les feux sont eteints (eau, commande externe...)
+            fireBlocks.clear();
+            fireBlockKeys.clear();
+            fireXZKeys.clear();
+            frontierXZKeys.clear();
+            currentRadius = 0;
+            controlledUntil = Math.max(controlledUntil, nowMs + (long) reIgnitionDelaySeconds * 1000L);
+            return false;
+        }
+
+        // Re-allumer les blocs eteints naturellement (pluie legere, etc.)
+        for (Location loc : naturallyOut) {
+            loc.getBlock().setType(Material.FIRE);
+        }
+        return true;
     }
 
     public void extinguish() {
@@ -175,6 +234,7 @@ public class FireZone {
         }
         fireBlocks.clear();
         fireBlockKeys.clear();
+        fireXZKeys.clear();
         frontierXZKeys.clear();
         currentRadius = 0;
     }
@@ -193,20 +253,34 @@ public class FireZone {
 
     /**
      * Marque une flamme comme eteinte manuellement.
-     * @return true quand toute la zone devient maitrisee (toutes les flammes eteintes)
+     * - Si d'autres flammes brulent encore : la case est remise en frontiere (peut se re-enflammer).
+     * - Si c'etait la derniere flamme : la zone passe en mode "maitrise".
+     * @return true si la zone est desormais entierement maitrisee
      */
     public boolean registerManualExtinguish(Location location, long nowMs) {
         if (location == null) return false;
 
         Location blockLoc = location.getBlock().getLocation();
         String key = toBlockKey(blockLoc);
-        suppressedFireKeys.add(key);
+        String xzKey = blockLoc.getBlockX() + "," + blockLoc.getBlockZ();
+
         fireBlocks.remove(blockLoc);
         fireBlockKeys.remove(key);
+        fireXZKeys.remove(xzKey);
 
         if (fireBlocks.isEmpty()) {
-            controlledUntil = Math.max(controlledUntil, nowMs + CONTROLLED_COOLDOWN_MS);
+            // Zone entierement maitrisee
+            suppressedFireKeys.add(key);
+            frontierXZKeys.clear();
+            controlledUntil = Math.max(controlledUntil, nowMs + (long) reIgnitionDelaySeconds * 1000L);
             return true;
+        }
+
+        // Il reste d'autres flammes : cette case peut se re-enflammer depuis ses voisins
+        double dx2 = blockLoc.getBlockX() - center.getBlockX();
+        double dz2 = blockLoc.getBlockZ() - center.getBlockZ();
+        if (dx2 * dx2 + dz2 * dz2 <= (double) maxSize * maxSize) {
+            frontierXZKeys.add(xzKey);
         }
         return false;
     }
@@ -222,14 +296,17 @@ public class FireZone {
     public void resumeAfterControlled() {
         controlledUntil = 0L;
         suppressedFireKeys.clear();
+        fireBlocks.clear();
+        fireBlockKeys.clear();
+        fireXZKeys.clear();
         frontierXZKeys.clear();
         currentRadius = 0;
         placeInitialFire();
     }
 
-    public long getControlledUntil() {
-        return controlledUntil;
-    }
+    public int getReIgnitionDelaySeconds() { return reIgnitionDelaySeconds; }
+
+    public long getControlledUntil() { return controlledUntil; }
 
     public void setControlledUntil(long controlledUntil) {
         this.controlledUntil = Math.max(0L, controlledUntil);
@@ -271,8 +348,6 @@ public class FireZone {
     public long getLastSpreadTime() { return lastSpreadTime; }
     public void setLastSpreadTime(long t) { this.lastSpreadTime = t; }
     public int getFireCount() { return fireBlocks.size(); }
-
-    /** Retourne true si toute la zone a ete couverte (frontiere vide). */
     public boolean isFullySpread() { return frontierXZKeys.isEmpty(); }
 
     /** Verifie si une position est dans cette zone sur le plan horizontal. */
