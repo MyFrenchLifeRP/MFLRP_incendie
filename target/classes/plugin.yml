@@ -1,7 +1,6 @@
 name: Plugin_MFLRP
 version: 1.0
 main: fr.incendie.Main
-api-version: 1.12
 author: Incendie
 description: Plugin Minecraft pour serveur MFLRP
 

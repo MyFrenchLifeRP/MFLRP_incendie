@@ -83,7 +83,6 @@ public class FireInteractListener implements Listener {
         event.setCancelled(true);
 
         if (pendingExtinguish) {
-            p.sendMessage("Une extinction est deja en cours. Attends la fin avant d'en lancer une autre.");
             return;
         }
         pendingExtinguish = true;
@@ -126,19 +125,6 @@ public class FireInteractListener implements Listener {
             plugin.getServer().getScheduler().runTaskLater(plugin, extinguishTask, delayTicks);
         }
 
-        if (matchedZone != null) {
-            if (delaySeconds == 0) {
-                p.sendMessage("La flamme de la zone '" + matchedZone.getName() + "' est eteinte instantanement.");
-            } else {
-                p.sendMessage("La flamme de la zone '" + matchedZone.getName() + "' s'eteindra dans " + delaySeconds + " seconde(s).");
-            }
-        } else {
-            if (delaySeconds == 0) {
-                p.sendMessage("La flamme est eteinte instantanement.");
-            } else {
-                p.sendMessage("La flamme s'eteindra dans " + delaySeconds + " seconde(s).");
-            }
-        }
     }
 
     // -------------------------------------------------------------------------
