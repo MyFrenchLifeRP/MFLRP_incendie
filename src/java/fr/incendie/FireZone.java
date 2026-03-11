@@ -36,6 +36,13 @@ public class FireZone {
     private Set<String> frontierXZKeys = new HashSet<>();    // cases candidates pour la propagation
     private long controlledUntil;
 
+    /** Reference partagee avec Main vers les colonnes XZ de pare-feu actives. */
+    private Set<String> blockedXZColumns = Collections.emptySet();
+
+    public void setBlockedXZColumns(Set<String> cols) {
+        this.blockedXZColumns = (cols != null) ? cols : Collections.<String>emptySet();
+    }
+
     /** Cree une nouvelle zone d'incendie. */
     public FireZone(String name, Location center, int minHeight, int maxHeight, int maxSize, int propagationSpeedSeconds, int reIgnitionDelaySeconds) {
         this.name = name;
@@ -111,6 +118,8 @@ public class FireZone {
             if (dist2 > (double) maxSize * maxSize) continue;
 
             String xzKey = nx + "," + nz;
+            // Ne pas ajouter les colonnes bloquees par un pare-feu
+            if (blockedXZColumns.contains(xzKey)) continue;
             if (frontierXZKeys.contains(xzKey)) continue;
             if (fireXZKeys.contains(xzKey)) continue;
 
@@ -140,14 +149,17 @@ public class FireZone {
      * Propage le feu vers un bloc adjacent de facon ponderee et realiste.
      * Les cases voisines de plusieurs flammes ont plus de chances de s'enflammer.
      * Poids d'une case = 1 + 2 * (nb de feux adjacents).
+     * Les colonnes XZ presentes dans blockedXZColumns (pare-feux) sont ignorees.
+     * @param blockedXZColumns colonnes XZ bloquees par les pare-feux ("x,z")
      * @return true si un nouveau feu a ete place
      */
     public boolean spreadOneFire() {
         if (frontierXZKeys.isEmpty()) return false;
 
-        // Construire la liste ponderee
+        // Construire la liste ponderee (les colonnes de pare-feu ont deja ete exclues de la frontiere)
         List<String> weightedPool = new ArrayList<>();
         for (String xzKey : frontierXZKeys) {
+            if (blockedXZColumns.contains(xzKey)) continue; // securite supplementaire
             String[] p = xzKey.split(",");
             int nx = Integer.parseInt(p[0]);
             int nz = Integer.parseInt(p[1]);

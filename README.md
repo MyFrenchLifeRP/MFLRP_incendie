@@ -115,7 +115,37 @@ Crée une zone nommée "foret" entre les niveaux 60 et 80, rayon max 50 blocs, a
 
 Une fois l'item défini, équipe‑le et fais un clic droit sur une flamme pour en éteindre une seule.
 
-### /extinguishstatus
+### /firebreakitem
+
+**Description** : Configure un type d'item (par son nom Material ou son ID numérique) et un délai en secondes avant action : un clic droit avec cet item sur un bloc de terre ou d'herbe le convertit en **Farmland** pendant 15 minutes, créant ainsi un pare-feu naturel.
+
+**Utilisation** :
+
+```
+/firebreakitem <materialId> <delaiSecondes>
+```
+
+- `<materialId>` peut être soit le nom `Material` Bukkit (ex. `STICK`, `BLAZE_ROD`), soit son ID numérique legacy 1.12 (ex. `280` pour `STICK`).
+- `<delaiSecondes>` définit le temps d'attente avant que la conversion soit appliquée.
+- Si `<delaiSecondes>` vaut `0`, la conversion est instantanée.
+
+**Blocs compatibles** : `GRASS` (herbe), `DIRT` (terre / coarse dirt / podzol), `MYCEL` (mycélium), `GRASS_PATH` (chemin).
+
+**Comportement** :
+
+- Un clic droit sur un bloc compatible le convertit en Farmland (`SOIL`, id 60).
+- Après 15 minutes, le bloc est automatiquement restauré dans son état d'origine.
+- Impossible de lancer deux actions pare-feu en même temps avec le même joueur : il faut attendre la fin de l'action en cours.
+
+### /firebreakstatus
+
+**Description** : Affiche la configuration de pare-feu actuellement chargée (item + ID + délai en secondes).
+
+**Utilisation** :
+
+```
+/firebreakstatus
+```
 
 **Description** : Affiche la configuration d'extinction actuellement chargée (item + ID + délai en secondes).
 

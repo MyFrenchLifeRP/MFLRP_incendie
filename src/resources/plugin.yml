@@ -27,6 +27,14 @@ commands:
     description: Affiche l'item et le delai d'extinction actuellement charges
     usage: /<command>
     permission: plugin.startfire
+  firebreakitem:
+    description: Définit l'objet qui crée un pare-feu (Farmland) au clic droit sur la terre/herbe
+    usage: /<command> <materialId> <delaiSecondes>
+    permission: plugin.startfire
+  firebreakstatus:
+    description: Affiche l'item et le delai de pare-feu actuellement charges
+    usage: /<command>
+    permission: plugin.startfire
 # Permissions du plugin
 permissions:
   plugin.startfire:

@@ -1,8 +1,12 @@
 package fr.incendie;
 
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 
 import org.bukkit.ChatColor;
 import org.bukkit.Location;
@@ -30,6 +34,8 @@ public class Main extends JavaPlugin {
         this.getCommand("removefire").setExecutor(new RemoveFireCommand(this));
         this.getCommand("extinguishitem").setExecutor(new ExtinguishItemCommand(this));
         this.getCommand("extinguishstatus").setExecutor(new ExtinguishStatusCommand(this));
+        this.getCommand("firebreakitem").setExecutor(new FirebreakItemCommand(this));
+        this.getCommand("firebreakstatus").setExecutor(new FirebreakStatusCommand(this));
 
         // Listener d'interaction pour l'outil d'extinction
         getServer().getPluginManager().registerEvents(new FireInteractListener(this), this);
@@ -82,6 +88,7 @@ public class Main extends JavaPlugin {
     }
 
     public void addFireZone(FireZone zone) {
+        zone.setBlockedXZColumns(firebreakXZColumns);
         fireZones.add(zone);
         savePersistentState();
     }
@@ -111,6 +118,15 @@ public class Main extends JavaPlugin {
     private org.bukkit.Material extinguisherMaterial;
     private int extinguishDelaySeconds = 2;
 
+    // Material utilise comme outil de pare-feu
+    private org.bukkit.Material firebreakMaterial;
+    private int firebreakDelaySeconds = 0;
+
+    // Blocs de farmland actifs (pare-feu) : cle "x,y,z" -> timestamp de restauration
+    private final Map<String, Long> firebreakBlocks = new HashMap<>();
+    // Colonnes XZ bloquees (pour le blocage de propagation) : cle "x,z"
+    private final Set<String> firebreakXZColumns = new HashSet<>();
+
     public void setExtinguisherMaterial(org.bukkit.Material mat) {
         this.extinguisherMaterial = mat;
         savePersistentState();
@@ -129,6 +145,66 @@ public class Main extends JavaPlugin {
         savePersistentState();
     }
 
+    public org.bukkit.Material getFirebreakMaterial() {
+        return firebreakMaterial;
+    }
+
+    public void setFirebreakMaterial(org.bukkit.Material mat) {
+        this.firebreakMaterial = mat;
+        savePersistentState();
+    }
+
+    public int getFirebreakDelaySeconds() {
+        return firebreakDelaySeconds;
+    }
+
+    public void setFirebreakDelaySeconds(int seconds) {
+        this.firebreakDelaySeconds = Math.max(0, seconds);
+        savePersistentState();
+    }
+
+    public void addFirebreakBlock(Location loc) {
+        String key = loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
+        String xzKey = loc.getBlockX() + "," + loc.getBlockZ();
+        firebreakBlocks.put(key, System.currentTimeMillis());
+        firebreakXZColumns.add(xzKey);
+        // Reconstruire la frontiere de chaque zone active pour purger les cellules
+        // qui seraient desormais derriere la ligne de pare-feu
+        for (FireZone zone : fireZones) {
+            zone.rebuildFrontier();
+        }
+    }
+
+    public void removeFirebreakBlock(Location loc) {
+        String key = loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ();
+        String xzKey = loc.getBlockX() + "," + loc.getBlockZ();
+        firebreakBlocks.remove(key);
+        // Retirer la colonne XZ seulement si aucun autre bloc pare-feu ne l'occupe encore
+        boolean stillPresent = false;
+        for (String remaining : firebreakBlocks.keySet()) {
+            String[] p = remaining.split(",");
+            if ((p[0] + "," + p[2]).equals(xzKey)) {
+                stillPresent = true;
+                break;
+            }
+        }
+        if (!stillPresent) {
+            firebreakXZColumns.remove(xzKey);
+        }
+    }
+
+    public boolean isFirebreakBlock(Location loc) {
+        return firebreakBlocks.containsKey(loc.getBlockX() + "," + loc.getBlockY() + "," + loc.getBlockZ());
+    }
+
+    public boolean isFirebreakColumn(int x, int z) {
+        return firebreakXZColumns.contains(x + "," + z);
+    }
+
+    public Set<String> getFirebreakXZColumns() {
+        return firebreakXZColumns;
+    }
+
     public void saveStateNow() {
         savePersistentState();
     }
@@ -145,6 +221,15 @@ public class Main extends JavaPlugin {
         }
 
         this.extinguishDelaySeconds = Math.max(0, getConfig().getInt("extinguisher.delaySeconds", 2));
+
+        String firebreakMaterialName = getConfig().getString("firebreak.material");
+        if (firebreakMaterialName != null && !firebreakMaterialName.isEmpty()) {
+            Material loadedFb = Material.getMaterial(firebreakMaterialName.toUpperCase());
+            if (loadedFb != null && loadedFb != Material.AIR) {
+                this.firebreakMaterial = loadedFb;
+            }
+        }
+        this.firebreakDelaySeconds = Math.max(0, getConfig().getInt("firebreak.delaySeconds", 0));
 
         ConfigurationSection zones = getConfig().getConfigurationSection("fireZones");
         if (zones == null) {
@@ -204,9 +289,11 @@ public class Main extends JavaPlugin {
                     }
                 }
                 // Reconstruire la frontiere de propagation a partir du snapshot
+                zone.setBlockedXZColumns(firebreakXZColumns);
                 zone.rebuildFrontier();
             } else {
                 // Pas de snapshot : placer le feu initial au centre
+                zone.setBlockedXZColumns(firebreakXZColumns);
                 zone.rebuildFrontier();
             }
 
@@ -233,6 +320,13 @@ public class Main extends JavaPlugin {
             getConfig().set("extinguisher.material", null);
         }
         getConfig().set("extinguisher.delaySeconds", extinguishDelaySeconds);
+
+        if (firebreakMaterial != null) {
+            getConfig().set("firebreak.material", firebreakMaterial.name());
+        } else {
+            getConfig().set("firebreak.material", null);
+        }
+        getConfig().set("firebreak.delaySeconds", firebreakDelaySeconds);
 
         getConfig().set("fireZones", null);
         int index = 0;
