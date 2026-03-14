@@ -14,9 +14,6 @@ import org.bukkit.block.Block;
 
 public class FireZone {
     private static final Random RANDOM = new Random();
-    // 8 directions horizontales pour la propagation
-    private static final int[] DX = {1, -1, 0, 0, 1, 1, -1, -1};
-    private static final int[] DZ = {0, 0, 1, -1, 1, -1, 1, -1};
 
     private String name;
     private Location center;
@@ -33,7 +30,7 @@ public class FireZone {
     private Set<String> fireBlockKeys  = new HashSet<>(); // "x,y,z"
     private Set<String> fireXZKeys     = new HashSet<>(); // "x,z"  pour le comptage d'adjacence
     private Set<String> suppressedFireKeys = new HashSet<>(); // blocs bloques quand la zone est maitrisee
-    private Set<String> frontierXZKeys = new HashSet<>();    // cases candidates pour la propagation
+    private Set<String> frontierBlockKeys = new HashSet<>(); // cases candidates pour la propagation ("x,y,z")
     private long controlledUntil;
 
     /** Reference partagee avec Main vers les colonnes XZ de pare-feu actives. */
@@ -107,26 +104,36 @@ public class FireZone {
     private void addNeighborsToFrontier(Location fireLoc) {
         World world = fireLoc.getWorld();
         int fx = fireLoc.getBlockX();
+        int fy = fireLoc.getBlockY();
         int fz = fireLoc.getBlockZ();
         int cx = center.getBlockX();
         int cz = center.getBlockZ();
 
-        for (int i = 0; i < DX.length; i++) {
-            int nx = fx + DX[i];
-            int nz = fz + DZ[i];
-            double dist2 = (double)(nx - cx) * (nx - cx) + (double)(nz - cz) * (nz - cz);
-            if (dist2 > (double) maxSize * maxSize) continue;
+        // Voisins 3D: horizontal + differences de hauteur, pour permettre la propagation entre etages.
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) continue;
 
-            String xzKey = nx + "," + nz;
-            // Ne pas ajouter les colonnes bloquees par un pare-feu
-            if (blockedXZColumns.contains(xzKey)) continue;
-            if (frontierXZKeys.contains(xzKey)) continue;
-            if (fireXZKeys.contains(xzKey)) continue;
+                int nx = fx + dx;
+                int nz = fz + dz;
+                double dist2 = (double) (nx - cx) * (nx - cx) + (double) (nz - cz) * (nz - cz);
+                if (dist2 > (double) maxSize * maxSize) continue;
 
-            Location candidate = findValidFireLocation(world, nx, nz);
-            if (candidate == null) continue;
+                String xzKey = nx + "," + nz;
+                if (blockedXZColumns.contains(xzKey)) continue;
 
-            frontierXZKeys.add(xzKey);
+                int minY = Math.max(minHeight, fy - 1);
+                int maxY = Math.min(maxHeight + 1, fy + 1);
+                for (int ny = minY; ny <= maxY; ny++) {
+                    if (!canHostFireAt(world, nx, ny, nz)) continue;
+
+                    String key = nx + "," + ny + "," + nz;
+                    if (suppressedFireKeys.contains(key)) continue;
+                    if (fireBlockKeys.contains(key)) continue;
+
+                    frontierBlockKeys.add(key);
+                }
+            }
         }
     }
 
@@ -135,7 +142,7 @@ public class FireZone {
      * A appeler apres chargement du snapshot de persistance.
      */
     public void rebuildFrontier() {
-        frontierXZKeys.clear();
+        frontierBlockKeys.clear();
         fireXZKeys.clear();
         for (Location loc : fireBlocks) {
             fireXZKeys.add(loc.getBlockX() + "," + loc.getBlockZ());
@@ -154,32 +161,37 @@ public class FireZone {
      * @return true si un nouveau feu a ete place
      */
     public boolean spreadOneFire() {
-        if (frontierXZKeys.isEmpty()) return false;
+        if (frontierBlockKeys.isEmpty()) return false;
 
-        // Construire la liste ponderee (les colonnes de pare-feu ont deja ete exclues de la frontiere)
+        // Construire la liste ponderee des cases candidates
         List<String> weightedPool = new ArrayList<>();
-        for (String xzKey : frontierXZKeys) {
-            if (blockedXZColumns.contains(xzKey)) continue; // securite supplementaire
-            String[] p = xzKey.split(",");
+        for (String blockKey : frontierBlockKeys) {
+            String[] p = blockKey.split(",");
             int nx = Integer.parseInt(p[0]);
-            int nz = Integer.parseInt(p[1]);
-            int adj = countAdjacentFireXZ(nx, nz);
+            int ny = Integer.parseInt(p[1]);
+            int nz = Integer.parseInt(p[2]);
+
+            if (blockedXZColumns.contains(nx + "," + nz)) continue; // securite supplementaire
+            int adj = countAdjacentFire3D(nx, ny, nz);
             int weight = 1 + adj * 2;
-            for (int w = 0; w < weight; w++) weightedPool.add(xzKey);
+            for (int w = 0; w < weight; w++) weightedPool.add(blockKey);
         }
         Collections.shuffle(weightedPool, RANDOM);
 
         Set<String> tried = new HashSet<>();
-        for (String xzKey : weightedPool) {
-            if (!tried.add(xzKey)) continue; // deja essaye cette case
-            frontierXZKeys.remove(xzKey);
+        for (String blockKey : weightedPool) {
+            if (!tried.add(blockKey)) continue; // deja essaye cette case
+            frontierBlockKeys.remove(blockKey);
 
-            String[] parts = xzKey.split(",");
+            String[] parts = blockKey.split(",");
             int nx = Integer.parseInt(parts[0]);
-            int nz = Integer.parseInt(parts[1]);
+            int ny = Integer.parseInt(parts[1]);
+            int nz = Integer.parseInt(parts[2]);
 
-            Location candidate = findValidFireLocation(center.getWorld(), nx, nz);
-            if (candidate == null) continue;
+            World world = center.getWorld();
+            if (!canHostFireAt(world, nx, ny, nz)) continue;
+
+            Location candidate = world.getBlockAt(nx, ny, nz).getLocation();
             String locKey = toBlockKey(candidate);
             if (fireBlockKeys.contains(locKey)) continue;
             if (suppressedFireKeys.contains(locKey)) continue;
@@ -192,13 +204,41 @@ public class FireZone {
         return false;
     }
 
-    /** Nombre de cases XZ voisines actuellement en feu (utilisé pour le poids de propagation). */
-    private int countAdjacentFireXZ(int x, int z) {
+    /** Nombre de feux adjacents en 3D (utilise pour le poids de propagation). */
+    private int countAdjacentFire3D(int x, int y, int z) {
         int count = 0;
-        for (int i = 0; i < DX.length; i++) {
-            if (fireXZKeys.contains((x + DX[i]) + "," + (z + DZ[i]))) count++;
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dy == 0 && dz == 0) continue;
+                    if (fireBlockKeys.contains((x + dx) + "," + (y + dy) + "," + (z + dz))) {
+                        count++;
+                    }
+                }
+            }
         }
         return count;
+    }
+
+    /**
+     * En 1.12, le feu peut tenir au-dessus d'un bloc solide ou au contact d'un bloc inflammable.
+     * Cette regle permet une propagation naturelle sur plusieurs etages (murs/toits/arbres) dans la zone.
+     */
+    private boolean canHostFireAt(World world, int x, int y, int z) {
+        if (y < minHeight || y > maxHeight + 1) return false;
+
+        Block target = world.getBlockAt(x, y, z);
+        if (target.getType() != Material.AIR) return false;
+
+        if (world.getBlockAt(x, y - 1, z).getType().isSolid()) {
+            return true;
+        }
+
+        return world.getBlockAt(x + 1, y, z).getType().isFlammable()
+                || world.getBlockAt(x - 1, y, z).getType().isFlammable()
+                || world.getBlockAt(x, y, z + 1).getType().isFlammable()
+                || world.getBlockAt(x, y, z - 1).getType().isFlammable()
+                || world.getBlockAt(x, y + 1, z).getType().isFlammable();
     }
 
     /**
@@ -225,7 +265,7 @@ public class FireZone {
             fireBlocks.clear();
             fireBlockKeys.clear();
             fireXZKeys.clear();
-            frontierXZKeys.clear();
+            frontierBlockKeys.clear();
             currentRadius = 0;
             controlledUntil = Math.max(controlledUntil, nowMs + (long) reIgnitionDelaySeconds * 1000L);
             return false;
@@ -247,7 +287,7 @@ public class FireZone {
         fireBlocks.clear();
         fireBlockKeys.clear();
         fireXZKeys.clear();
-        frontierXZKeys.clear();
+        frontierBlockKeys.clear();
         currentRadius = 0;
     }
 
@@ -283,7 +323,7 @@ public class FireZone {
         if (fireBlocks.isEmpty()) {
             // Zone entierement maitrisee
             suppressedFireKeys.add(key);
-            frontierXZKeys.clear();
+            frontierBlockKeys.clear();
             controlledUntil = Math.max(controlledUntil, nowMs + (long) reIgnitionDelaySeconds * 1000L);
             return true;
         }
@@ -292,7 +332,7 @@ public class FireZone {
         double dx2 = blockLoc.getBlockX() - center.getBlockX();
         double dz2 = blockLoc.getBlockZ() - center.getBlockZ();
         if (dx2 * dx2 + dz2 * dz2 <= (double) maxSize * maxSize) {
-            frontierXZKeys.add(xzKey);
+            frontierBlockKeys.add(key);
         }
         return false;
     }
@@ -311,7 +351,7 @@ public class FireZone {
         fireBlocks.clear();
         fireBlockKeys.clear();
         fireXZKeys.clear();
-        frontierXZKeys.clear();
+        frontierBlockKeys.clear();
         currentRadius = 0;
         placeInitialFire();
     }
@@ -360,7 +400,7 @@ public class FireZone {
     public long getLastSpreadTime() { return lastSpreadTime; }
     public void setLastSpreadTime(long t) { this.lastSpreadTime = t; }
     public int getFireCount() { return fireBlocks.size(); }
-    public boolean isFullySpread() { return frontierXZKeys.isEmpty(); }
+    public boolean isFullySpread() { return frontierBlockKeys.isEmpty(); }
 
     /** Verifie si une position est dans cette zone sur le plan horizontal. */
     public boolean contains(Location location) {
@@ -369,5 +409,15 @@ public class FireZone {
         double dx = location.getX() - center.getX();
         double dz = location.getZ() - center.getZ();
         return (dx * dx + dz * dz) <= ((double) maxSize * maxSize);
+    }
+
+    /**
+     * Verifie si une position est dans la zone horizontale ET dans la plage de hauteur [minHeight, maxHeight+1].
+     * Le +1 couvre les flammes posees au-dessus du bloc solide le plus haut.
+     */
+    public boolean containsWithHeight(Location location) {
+        if (!contains(location)) return false;
+        int y = location.getBlockY();
+        return y >= minHeight && y <= maxHeight + 1;
     }
 }

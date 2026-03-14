@@ -41,7 +41,7 @@ public class Main extends JavaPlugin {
         getServer().getPluginManager().registerEvents(new FireInteractListener(this), this);
 
         // Enregistrement des events
-        getServer().getPluginManager().registerEvents(new FireListener(), this);
+        getServer().getPluginManager().registerEvents(new FireListener(this), this);
 
         // Scheduler pour la propagation et le maintien du feu (1 seconde = 20 ticks)
         new BukkitRunnable() {
